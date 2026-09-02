@@ -35,6 +35,18 @@ else:
 fi
 
 [[ -f "$JAR" ]] || { echo "no such jar: $JAR" >&2; exit 1; }
+
+# Preflight javap BEFORE any check runs. Without this, a missing or broken JDK
+# makes every javap invocation below fail and the script reports "target class
+# missing" for each mixin — i.e. it blames Vivecraft for a local toolchain
+# problem. It still exits non-zero either way, but the message sent someone
+# hunting an upstream rename that had not happened. Fail with the real reason.
+if ! javap -version >/dev/null 2>&1; then
+  echo "javap not available (or no JDK on PATH) — cannot disassemble." >&2
+  echo "Install a JDK 21 and ensure JAVA_HOME/bin is on PATH, then re-run." >&2
+  exit 2
+fi
+
 echo "Verifying mixin targets against: $JAR"
 
 unzip -q -o "$JAR" 'org/vivecraft/client_vr/gameplay/trackers/*.class' -d "$WORK/x"

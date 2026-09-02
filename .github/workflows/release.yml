@@ -1,0 +1,246 @@
+name: Release
+
+# Releases are dispatch-only. There is intentionally no `push: tags` trigger:
+# this workflow is the SOURCE of tags, not a consumer. A tag pushed by any other
+# path (manual `git tag && push`, `gh release create`, stray script) becomes a
+# visible orphan with no release attached. Same convention as the sibling mods.
+#
+# Publishing is credential-gated and degrades: with no MODRINTH_*/CURSEFORGE_*
+# secrets configured the GitHub Release still happens and the platform upload is
+# skipped with a warning, so a first dispatch cannot half-fail on missing setup.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to create + release (e.g. v0.2.1). Created from main HEAD — must NOT already exist."
+        required: true
+        type: string
+      changelog:
+        description: "Release notes (Markdown) for the GitHub release body + Modrinth/CurseForge changelog. Blank = auto-generated commit notes."
+        required: false
+        type: string
+        default: ""
+      republish:
+        description: "Recovery for a partial-publish failure: re-run for a tag/release that ALREADY exists. Skips the tag-exists guard; the GitHub release updates in place and mc-publish (fail-mode:warn) no-ops platform versions that already published."
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify input tag matches mod_version on main
+        run: |
+          TAG="${RELEASE_TAG#v}"
+          GRADLE_VERSION=$(grep '^mod_version=' gradle.properties | cut -d= -f2)
+          if [ "$TAG" != "$GRADLE_VERSION" ]; then
+            echo "::error::Input tag $RELEASE_TAG does not match mod_version=$GRADLE_VERSION on main. Bump gradle.properties to $TAG (or re-dispatch with tag=v$GRADLE_VERSION) before releasing."
+            exit 1
+          fi
+          echo "MOD_VERSION=$GRADLE_VERSION" >> "$GITHUB_ENV"
+
+      # Skipped on republish: recovery dispatches intentionally target an existing
+      # tag/release (action-gh-release updates it in place below).
+      - name: Check tag does not already exist
+        if: ${{ inputs.republish == false }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh api "repos/${GITHUB_REPOSITORY}/git/refs/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "::error::Tag $RELEASE_TAG already exists on remote. Delete it first: gh api -X DELETE repos/${GITHUB_REPOSITORY}/git/refs/tags/${RELEASE_TAG} — or re-dispatch with republish=true to update the existing release."
+            exit 1
+          fi
+
+      - name: Compute release type from tag
+        id: release_type
+        run: |
+          TAG_NUMERIC="${RELEASE_TAG#v}"
+          MAJOR="${TAG_NUMERIC%%.*}"
+          if [ "$MAJOR" -gt 0 ] 2>/dev/null; then
+            echo "type=release" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "Release type: release (tag $RELEASE_TAG, MAJOR=$MAJOR > 0)"
+          else
+            echo "type=beta" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "Release type: beta (tag $RELEASE_TAG, MAJOR=$MAJOR — pre-1.0)"
+          fi
+
+      # BLOCKING release gate, and the reason this step sits before the build.
+      #
+      # Every mixin here targets Vivecraft by string class name, so a Vivecraft
+      # rename does not fail compilation — it fails at class load. And the bug this
+      # mod exists to fix (teleport dropping you into the void) is itself invisible
+      # without a headset, so a silently-broken mixin would ship unnoticed and
+      # reintroduce the exact regression. Disassembling the pinned Vivecraft jar is
+      # the only automated check that can see it, so no release goes out without it.
+      #
+      # A failure here means gradle.properties `vivecraft_dev_version` moved, or
+      # Vivecraft renamed a wrapped call: update the mixin + its javadoc, re-verify,
+      # then re-dispatch.
+      - name: Verify mixin targets against pinned Vivecraft
+        run: scripts/verify-mixin-targets.sh
+
+      - run: ./gradlew build --no-daemon --stacktrace
+
+      - name: Generate release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ env.RELEASE_TAG }}
+          CHANGELOG_INPUT: ${{ inputs.changelog }}
+        run: |
+          if [ -n "$CHANGELOG_INPUT" ]; then
+            printf '%s\n' "$CHANGELOG_INPUT" > release-notes.md
+            echo "Using operator-provided changelog input ($(wc -c < release-notes.md) bytes)."
+          else
+            gh api -X POST \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$REPO/releases/generate-notes" \
+              -f tag_name="$TAG" \
+              -f target_commitish=main \
+              --jq .body > release-notes.md
+            if [ ! -s release-notes.md ]; then
+              echo "Initial release — no prior tag to diff against." > release-notes.md
+            fi
+          fi
+          echo "::group::Generated release notes"
+          cat release-notes.md
+          echo "::endgroup::"
+
+      # Pre-1.0 means "the VR behaviour has not been validated in a headset".
+      # The fix mechanism is verified against real Vivecraft/Sable bytecode and
+      # covered by unit tests, but no automated check can confirm that a teleport
+      # actually lands correctly on a moving sub-level — that needs SteamVR
+      # hardware. Players deserve to read that on the download page, not discover
+      # it mid-flight, so the banner is prepended automatically rather than left
+      # to whoever writes the changelog. It disappears on its own at v1.0.0.
+      - name: Prepend pre-release VR-testing notice
+        if: steps.release_type.outputs.prerelease == 'true'
+        run: |
+          {
+            echo "> **Beta — not yet tested in a headset.**"
+            echo "> The teleport and melee fixes are verified against real Vivecraft and Sable"
+            echo "> bytecode and covered by unit tests, but no one has yet confirmed them in VR on"
+            echo "> a moving Sable structure. Please report anything that misbehaves:"
+            echo "> https://github.com/bh679/vivecraft-sable-compat/issues"
+            echo
+            echo "---"
+            echo
+            cat release-notes.md
+          } > release-notes.beta.md
+          mv release-notes.beta.md release-notes.md
+          echo "::group::Release notes with beta banner"; cat release-notes.md; echo "::endgroup::"
+
+      # action-gh-release is idempotent: on a republish dispatch it updates the
+      # existing release/tag in place rather than failing.
+      - name: Create GitHub Release
+        id: gh_release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Vivecraft Sable Compat ${{ env.RELEASE_TAG }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          body_path: release-notes.md
+          files: build/libs/vivecraft_sable_compat-*.jar
+          fail_on_unmatched_files: true
+          prerelease: ${{ steps.release_type.outputs.prerelease == 'true' }}
+
+      - name: Check mod-platform publish prerequisites
+        id: publish_check
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+          CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+          MODRINTH_PROJECT_ID: ${{ vars.MODRINTH_PROJECT_ID }}
+          CURSEFORGE_PROJECT_ID: ${{ vars.CURSEFORGE_PROJECT_ID }}
+        run: |
+          MODRINTH_READY=false
+          CURSEFORGE_READY=false
+          if [ -n "$MODRINTH_TOKEN" ] && [ -n "$MODRINTH_PROJECT_ID" ]; then
+            MODRINTH_READY=true
+          else
+            echo "::warning::Modrinth secret/variable missing — skipping Modrinth publish."
+          fi
+          if [ -n "$CURSEFORGE_TOKEN" ] && [ -n "$CURSEFORGE_PROJECT_ID" ]; then
+            CURSEFORGE_READY=true
+          else
+            echo "::warning::CurseForge secret/variable missing — skipping CurseForge publish."
+          fi
+          echo "modrinth=$MODRINTH_READY" >> "$GITHUB_OUTPUT"
+          echo "curseforge=$CURSEFORGE_READY" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to Modrinth + CurseForge
+        id: mcpublish
+        if: steps.publish_check.outputs.modrinth == 'true' || steps.publish_check.outputs.curseforge == 'true'
+        uses: Kir-Antipov/mc-publish@v3.3
+        with:
+          modrinth-id: ${{ steps.publish_check.outputs.modrinth == 'true' && vars.MODRINTH_PROJECT_ID || '' }}
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+          curseforge-id: ${{ steps.publish_check.outputs.curseforge == 'true' && vars.CURSEFORGE_PROJECT_ID || '' }}
+          curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
+          files: build/libs/vivecraft_sable_compat-*.jar
+          name: Vivecraft Sable Compat ${{ env.RELEASE_TAG }}
+          version: ${{ env.RELEASE_TAG }}
+          # beta for every 0.x tag — see "Compute release type" above. Keeps the mod
+          # out of launchers' default "release only" filters until it has been flown
+          # in a headset and promoted to 1.0.0.
+          version-type: ${{ steps.release_type.outputs.type }}
+          changelog-file: release-notes.md
+          loaders: neoforge
+          game-versions: 1.21.1
+          # Both are hard requirements in neoforge.mods.toml — the loader refuses to
+          # start this mod without them — so both are declared `required` here, and
+          # the platform pages prompt the user to install them. Neither is bundled:
+          # Sable's PolyForm Shield licence does not permit redistribution.
+          # Slugs are identical on Modrinth and CurseForge, so one list serves both.
+          dependencies: |
+            vivecraft(required)
+            sable(required)
+          java: 21
+          retry-attempts: 2
+          retry-delay: 10000
+          fail-mode: warn
+
+      - name: Publish summary
+        if: always() && steps.gh_release.outcome == 'success'
+        env:
+          RELEASE_TAG: ${{ env.RELEASE_TAG }}
+          REPO: ${{ github.repository }}
+          RELEASE_TYPE: ${{ steps.release_type.outputs.type }}
+          MODRINTH_VERSION: ${{ steps.mcpublish.outputs.modrinth-version }}
+          CURSEFORGE_VERSION: ${{ steps.mcpublish.outputs.curseforge-version }}
+        run: |
+          {
+            echo "## Vivecraft Sable Compat $RELEASE_TAG ($RELEASE_TYPE)"
+            echo
+            echo "- GitHub Release: https://github.com/$REPO/releases/tag/$RELEASE_TAG"
+            if [ -n "$MODRINTH_VERSION" ]; then
+              echo "- Modrinth version: \`$MODRINTH_VERSION\`"
+            else
+              echo "- Modrinth: :warning: not published (missing credentials or upload failed)"
+            fi
+            if [ -n "$CURSEFORGE_VERSION" ]; then
+              echo "- CurseForge file id: \`$CURSEFORGE_VERSION\`"
+            else
+              echo "- CurseForge: :warning: not published (missing credentials or upload failed)"
+            fi
+            echo
+            echo "Both ids above are what \`modpack/modpack.config.json\` in dungeon-train-mc needs."
+          } >> "$GITHUB_STEP_SUMMARY"
