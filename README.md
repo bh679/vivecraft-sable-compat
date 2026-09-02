@@ -1,5 +1,13 @@
 # Vivecraft Sable Compat
 
+[![CI](https://github.com/bh679/vivecraft-sable-compat/actions/workflows/ci.yml/badge.svg)](https://github.com/bh679/vivecraft-sable-compat/actions/workflows/ci.yml)
+
+> ⚠️ **Beta — not yet tested in a headset.** Both fixes are verified against real
+> Vivecraft and Sable bytecode and covered by unit tests, but nobody has yet teleported
+> in VR on a moving Sable structure. Every 0.x release publishes as **beta** on Modrinth
+> and CurseForge for exactly this reason. Please
+> [report anything that misbehaves](https://github.com/bh679/vivecraft-sable-compat/issues).
+
 Makes [Vivecraft](https://modrinth.com/mod/vivecraft) VR work properly while you are standing
 on a [Sable](https://modrinth.com/mod/sable) sub-level — a moving, physics-driven structure
 such as a ship or a train carriage.
@@ -56,7 +64,8 @@ scripts/verify-mixin-targets.sh
 ```
 
 It disassembles the pinned Vivecraft jar and asserts every wrapped call still exists in the
-method being injected into.
+method being injected into. It needs a JDK on `PATH` for `javap` (Gradle's own toolchain is
+not enough) and network access to Modrinth to fetch the pinned build.
 
 > ⚠️ The one thing unit tests cannot cover is whether the teleport actually lands correctly
 > in VR. That needs a headset, Sable and a moving structure.
@@ -72,6 +81,52 @@ to read the result.
 Diagnostics ship enabled. They cost a counter on the melee path (which runs many times a second,
 so it is aggregated, never logged per swing) and a rate-limited line per teleport; the log-volume
 limits are enforced by unit tests rather than left as a promise.
+### CI
+
+[`ci.yml`](.github/workflows/ci.yml) runs on every push and PR, as two parallel jobs so a
+failure is attributable at a glance:
+
+| Job | What it catches |
+|---|---|
+| `build` | Compile errors and unit-test regressions (`./gradlew build`). |
+| `mixins` | An upstream Vivecraft rename, via `scripts/verify-mixin-targets.sh`. |
+
+The `mixins` job is the one that matters most. Vivecraft is not a compile dependency, so a
+rename does not fail `build` — it fails at class load, in a headset, where nobody is
+watching. A red `mixins` leg means Vivecraft changed; a red `build` leg means we did.
+
+## Releasing
+
+Dispatch-only — the workflow is the source of tags, never a consumer of them:
+
+```bash
+gh workflow run release.yml -f tag=v0.2.1
+```
+
+The tag must match `mod_version` in `gradle.properties`, and must not already exist
+(pass `-f republish=true` to recover a partial publish). Before building, the workflow
+re-runs the mixin-target verification as a **blocking gate** — no release ships with a
+mixin that no longer matches the pinned Vivecraft build.
+
+Every `0.x` tag publishes as **beta** and prepends the headset-testing notice above to
+the platform changelog automatically. That stops at `v1.0.0` — so do not cut a 1.0 until
+the fixes have actually been flown in VR.
+
+Publishing is credential-gated and degrades safely: without the secrets below the GitHub
+Release still happens and the platform upload is skipped with a warning.
+
+| Setting | Kind | Purpose |
+|---|---|---|
+| `MODRINTH_TOKEN` | secret | Modrinth API token (scope: create versions) |
+| `CURSEFORGE_TOKEN` | secret | CurseForge API token |
+| `MODRINTH_PROJECT_ID` | variable | Modrinth project id/slug |
+| `CURSEFORGE_PROJECT_ID` | variable | CurseForge numeric project id |
+
+### Downstream: the Dungeon Train modpack
+
+Dungeon Train bundles this mod, so a release here has a follow-up there — see
+[`docs/dungeon-train-modpack.md`](docs/dungeon-train-modpack.md) for the exact entry and
+the reason it must ship **opt-in**.
 
 ## History
 

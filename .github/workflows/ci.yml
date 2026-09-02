@@ -1,0 +1,83 @@
+name: CI
+
+# Two independent guards, run in parallel because they fail for unrelated reasons:
+#
+#   build   — compiles the mod and runs the JUnit suite. Catches anything javac or
+#             the pure-logic tests can see.
+#   mixins  — disassembles the pinned Vivecraft jar and asserts every wrapped call
+#             still exists. This is the guard that matters most here: Vivecraft is
+#             NOT a compile dependency (mixins target it by string class name), so a
+#             Vivecraft rename does not fail `build` — it fails at class load, in a
+#             headset, on a moving train, where nobody is watching. See
+#             scripts/verify-mixin-targets.sh.
+#
+# Keeping them as separate jobs makes a failure attributable at a glance: a red
+# `mixins` leg is an upstream Vivecraft change, a red `build` leg is our code.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build + unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Mojang ships Java 21 to end users in 1.21.1; the Gradle toolchain pins 21 too.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # setup-gradle@v4 (not @v3): this repo's wrapper is Gradle 9.x, which the v4
+      # cache-cleanup understands. The v3 note in the sibling repos exists because
+      # they are still on Gradle 8.4.
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build + test
+        run: ./gradlew build --no-daemon --stacktrace
+
+      # Surface the HTML/XML reports when the suite fails so a red run is
+      # diagnosable without re-running locally.
+      - name: Upload test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: build/reports/tests/test
+          if-no-files-found: ignore
+
+      - name: Upload jar
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vivecraft-sable-compat-jar-${{ github.sha }}
+          path: build/libs/vivecraft_sable_compat-*.jar
+          if-no-files-found: error
+          retention-days: 14
+
+  mixins:
+    name: verify mixin targets vs pinned Vivecraft
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # For `javap` only — no Gradle here. The script downloads the Vivecraft build
+      # pinned in gradle.properties (vivecraft_dev_version) straight from Modrinth.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Verify mixin targets
+        run: scripts/verify-mixin-targets.sh
