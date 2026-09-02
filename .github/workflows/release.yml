@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to create + release (e.g. v0.2.1). Created from main HEAD — must NOT already exist."
+        description: "Tag to create + release (e.g. v0.2.2). Created from main HEAD — must NOT already exist."
         required: true
         type: string
       changelog:
