@@ -2,6 +2,7 @@
   "required": true,
   "minVersion": "0.8",
   "package": "games.brennan.vivecraftsable.mixin",
+  "plugin": "games.brennan.vivecraftsable.VscMixinPlugin",
   "compatibilityLevel": "JAVA_21",
   "_comment": "No refmap: every mixin is remap=false (Vivecraft targets are named by string) and NeoForge 1.21.1 uses Mojang mappings in dev and production alike, so the Minecraft members referenced in @At targets need no remapping. Declaring one would point at a file that is never generated.",
   "mixins": [],

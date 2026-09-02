@@ -2,6 +2,7 @@ package games.brennan.vivecraftsable.mixin;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import games.brennan.vivecraftsable.VscDiagnostics;
 import games.brennan.vivecraftsable.client.SwingAabbClamp;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.world.entity.Entity;
@@ -62,6 +63,12 @@ public abstract class SwingTrackerSubLevelAabbMixin {
         // Decision + rebuild live in SwingAabbClamp (unit-tested). Null entity (no exclusion) can't
         // supply a bounding box, so pass the query through untouched.
         AABB query = entity != null ? SwingAabbClamp.forSwingQuery(area, entity.getBoundingBox()) : area;
+        // Render thread, many calls a second: identity comparison to spot the rebuild (forSwingQuery
+        // returns the original by identity when it changes nothing), then a counter. VscDiagnostics
+        // aggregates — this must never log per swing.
+        if (query != area) {
+            VscDiagnostics.meleeClamped();
+        }
         return original.call(level, entity, query);
     }
 }
