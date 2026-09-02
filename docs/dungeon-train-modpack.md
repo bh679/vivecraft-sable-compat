@@ -83,14 +83,12 @@ that does not exist.
 
 ## Order of operations
 
-1. Create the Modrinth + CurseForge projects (slug `vivecraft-sable-compat`,
-   client-side only, NeoForge 1.21.1). Set `server_side: unsupported` on Modrinth.
-2. Add `MODRINTH_TOKEN` / `CURSEFORGE_TOKEN` secrets and
-   `MODRINTH_PROJECT_ID` / `CURSEFORGE_PROJECT_ID` variables to this repo.
-3. `gh workflow run release.yml -f tag=v0.2.1` — publishes as **beta** (see the README's
-   Releasing section) and prints the three ids.
-4. Open one Dungeon Train PR with both edits above, filled in with those ids.
-5. Ideally: get a VR test in before promoting to `v1.0.0`. See "VR testing" below.
+1. Create the two platform projects, mint the tokens, and wire them into this repo —
+   every field and value is in [publishing-setup.md](publishing-setup.md).
+2. `gh workflow run release.yml -f tag=v0.2.2` — publishes as **beta** and prints the
+   three ids above to the run summary.
+3. Open one Dungeon Train PR with both edits above, filled in with those ids.
+4. Ideally: get a VR test in before promoting to `v1.0.0`. See "VR testing" below.
 
 ## VR testing
 

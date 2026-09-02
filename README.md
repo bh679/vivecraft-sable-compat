@@ -100,7 +100,7 @@ watching. A red `mixins` leg means Vivecraft changed; a red `build` leg means we
 Dispatch-only — the workflow is the source of tags, never a consumer of them:
 
 ```bash
-gh workflow run release.yml -f tag=v0.2.1
+gh workflow run release.yml -f tag=v0.2.2
 ```
 
 The tag must match `mod_version` in `gradle.properties`, and must not already exist
@@ -121,6 +121,10 @@ Release still happens and the platform upload is skipped with a warning.
 | `CURSEFORGE_TOKEN` | secret | CurseForge API token |
 | `MODRINTH_PROJECT_ID` | variable | Modrinth project id/slug |
 | `CURSEFORGE_PROJECT_ID` | variable | CurseForge numeric project id |
+
+Setting those up is a one-time job — creating the two platform projects, minting the
+tokens, and every value to paste is in
+[`docs/publishing-setup.md`](docs/publishing-setup.md).
 
 ### Downstream: the Dungeon Train modpack
 
