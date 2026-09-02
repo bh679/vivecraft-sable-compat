@@ -31,10 +31,10 @@ jobs:
     name: build + unit tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Mojang ships Java 21 to end users in 1.21.1; the Gradle toolchain pins 21 too.
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
@@ -51,7 +51,7 @@ jobs:
       # diagnosable without re-running locally.
       - name: Upload test report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: test-report
           path: build/reports/tests/test
@@ -59,7 +59,7 @@ jobs:
 
       - name: Upload jar
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: vivecraft-sable-compat-jar-${{ github.sha }}
           path: build/libs/vivecraft_sable_compat-*.jar
@@ -70,11 +70,11 @@ jobs:
     name: verify mixin targets vs pinned Vivecraft
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # For `javap` only — no Gradle here. The script downloads the Vivecraft build
       # pinned in gradle.properties (vivecraft_dev_version) straight from Modrinth.
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
