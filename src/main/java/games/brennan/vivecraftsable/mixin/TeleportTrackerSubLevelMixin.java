@@ -3,6 +3,7 @@ package games.brennan.vivecraftsable.mixin;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import dev.ryanhcode.sable.companion.SableCompanion;
+import games.brennan.vivecraftsable.VscDiagnostics;
 import games.brennan.vivecraftsable.client.SubLevelTeleportProjection;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.Position;
@@ -61,10 +62,17 @@ public abstract class TeleportTrackerSubLevelMixin {
     private void vivecraftsable$projectTeleportOutOfSubLevel(
             LocalPlayer player, double x, double y, double z, Operation<Void> original) {
 
+        Vec3 raw = new Vec3(x, y, z);
         Vec3 corrected = SubLevelTeleportProjection.correct(
-            new Vec3(x, y, z),
+            raw,
             destination -> SableCompanion.INSTANCE.projectOutOfSubLevel(player.level(), (Position) destination));
 
         original.call(player, corrected.x, corrected.y, corrected.z);
+
+        // Reported AFTER the move so the log carries where the player actually ended up, not just
+        // where we asked them to go — the two differing is the signature of a fix that is not
+        // holding. Teleports are user-initiated and the call is rate-limited, so this is not a hot
+        // path. See VscDiagnostics for why testers can debug this from latest.log alone.
+        VscDiagnostics.teleport(raw, corrected, player.position());
     }
 }

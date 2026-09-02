@@ -1,11 +1,12 @@
 package games.brennan.vivecraftsable;
 
-import com.mojang.logging.LogUtils;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
-import org.slf4j.Logger;
+import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
+import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
+import net.neoforged.neoforge.common.NeoForge;
 
 /**
  * Vivecraft Sable Compat — makes Vivecraft VR behave on a Sable sub-level.
@@ -40,9 +41,12 @@ public final class VivecraftSableCompat {
 
     public static final String MOD_ID = "vivecraft_sable_compat";
 
-    private static final Logger LOGGER = LogUtils.getLogger();
-
     public VivecraftSableCompat(IEventBus modBus, ModContainer modContainer) {
-        LOGGER.info("[{}] loaded — Vivecraft VR fixes for Sable sub-levels active", MOD_ID);
+        // Diagnostics exist because this mod's bug is only reproducible in a VR headset on a moving
+        // structure, which the author cannot run — a tester's latest.log has to be enough on its
+        // own. See VscDiagnostics.
+        modBus.addListener(FMLClientSetupEvent.class, e -> VscDiagnostics.logEnvironment());
+        NeoForge.EVENT_BUS.addListener(ClientPlayerNetworkEvent.LoggingOut.class,
+            e -> VscDiagnostics.logSummary());
     }
 }

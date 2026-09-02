@@ -61,6 +61,18 @@ method being injected into.
 > ⚠️ The one thing unit tests cannot cover is whether the teleport actually lands correctly
 > in VR. That needs a headset, Sable and a moving structure.
 
+### Getting it tested
+
+Because the bug only exists in a headset on a moving structure, the mod logs its own diagnosis:
+whether each mixin applied, and for every teleport, the destination Vivecraft chose versus the one
+that was actually used. A tester therefore only has to **send `latest.log`** — see
+**[TESTING.md](TESTING.md)**, which is written to be handed straight to them, and also explains how
+to read the result.
+
+Diagnostics ship enabled. They cost a counter on the melee path (which runs many times a second,
+so it is aggregated, never logged per swing) and a rate-limited line per teleport; the log-volume
+limits are enforced by unit tests rather than left as a promise.
+
 ## History
 
 The melee fix originally shipped inside
