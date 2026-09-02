@@ -1,0 +1,16 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "games.brennan.vivecraftsable.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "refmap": "vivecraft_sable_compat.refmap.json",
+  "mixins": [],
+  "client": [
+    "TeleportTrackerSubLevelMixin",
+    "SwingTrackerSubLevelAabbMixin"
+  ],
+  "server": [],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

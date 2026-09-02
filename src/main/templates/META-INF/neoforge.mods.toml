@@ -1,0 +1,54 @@
+modLoader="javafml"
+loaderVersion="${loader_version_range}"
+license="${mod_license}"
+issueTrackerURL="https://github.com/bh679/vivecraft-sable-compat/issues"
+
+[[mods]]
+modId="${mod_id}"
+version="${mod_version}"
+displayName="${mod_name}"
+authors="${mod_authors}"
+description='''${mod_description}'''
+displayURL="https://github.com/bh679/vivecraft-sable-compat"
+
+# Vivecraft — required: every mixin in this mod targets a Vivecraft class, so
+# without it the mod has nothing to do. Deliberately an OPEN range: Vivecraft's
+# declared version carries the Minecraft prefix ("1.21.1-1.3.15") and does not
+# order sanely as a Maven range, so pinning here would reject valid builds.
+# The mixins themselves are the real compatibility gate — if Vivecraft renames
+# a targeted method, mixin application fails loudly at load rather than
+# silently no-opping and dropping players into the void again.
+[[dependencies.${mod_id}]]
+    modId="vivecraft"
+    type="required"
+    versionRange="[1,)"
+    ordering="AFTER"
+    side="CLIENT"
+
+# Sable — required, MINIMUM version (see the long note in gradle.properties for
+# why this is a range and not the exact pin the sibling Sable mods use).
+[[dependencies.${mod_id}]]
+    modId="sable"
+    type="required"
+    versionRange="[${sable_mod_version},)"
+    ordering="AFTER"
+    side="CLIENT"
+
+[[dependencies.${mod_id}]]
+    modId="neoforge"
+    type="required"
+    versionRange="${loader_version_range}"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="minecraft"
+    type="required"
+    versionRange="${minecraft_version_range}"
+    ordering="NONE"
+    side="BOTH"
+
+# All mixins live in one client-side config. Every target is a Vivecraft class,
+# named by string because Vivecraft is not a compile dependency.
+[[mixins]]
+    config="${mod_id}.mixins.json"
